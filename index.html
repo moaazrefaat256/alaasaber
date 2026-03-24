@@ -1086,6 +1086,7 @@
               <span class="search-icon">🔍</span>
               <input type="text" id="att-search" placeholder="ابحث باسم أو كود..." oninput="renderAttGrid()" style="width:180px;padding-right:38px;font-size:13px">
             </div>
+            <button id="att-sort-btn" class="btn btn-secondary btn-sm" onclick="toggleAttSort()" title="تبديل ترتيب الطلاب">🔢 ترتيب بالكود</button>
             <button class="btn btn-secondary btn-sm" onclick="markAllPresent()">✅ تحضير الكل</button>
             <button class="btn btn-secondary btn-sm" onclick="markAllAbsent()">❌ تغيب الكل</button>
             <button class="btn btn-primary btn-sm" onclick="saveAttendance()">💾 حفظ وإرسال الإشعارات</button>
@@ -2099,6 +2100,7 @@ function confirmDeleteStudent(code) {
 }
 
 let studentSortByCode = false;
+let attSortByCode = false;
 
 function toggleStudentSort() {
   studentSortByCode = !studentSortByCode;
@@ -2109,6 +2111,17 @@ function toggleStudentSort() {
     btn.style.color = studentSortByCode ? 'var(--accent)' : '';
   }
   filterStudents();
+}
+
+function toggleAttSort() {
+  attSortByCode = !attSortByCode;
+  const btn = document.getElementById('att-sort-btn');
+  if (btn) {
+    btn.textContent = attSortByCode ? '📋 الترتيب الأصلي' : '🔢 ترتيب بالكود';
+    btn.style.borderColor = attSortByCode ? 'var(--accent)' : '';
+    btn.style.color = attSortByCode ? 'var(--accent)' : '';
+  }
+  renderAttGrid();
 }
 
 function filterStudents() {
@@ -2581,10 +2594,14 @@ function renderAttGrid() {
   const session = state.sessions.find(s => s.id === state.currentSession);
   const sessionCenter = session?.center || '';
 
-  // Students belonging to this session's center
-  const centerStudents = sessionCenter
+  // Students belonging to this session's center — keep original insertion order by default
+  let centerStudents = sessionCenter
     ? state.students.filter(s => s.center === sessionCenter && !s.isGuest)
     : state.students.filter(s => !s.isGuest);
+
+  if (attSortByCode) {
+    centerStudents = [...centerStudents].sort((a, b) => parseInt(a.code) - parseInt(b.code));
+  }
 
   // Guest/compensation students: stored per-session
   const guestsMap = state.attendance['guests_' + state.currentSession] || {};
