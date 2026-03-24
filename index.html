@@ -1634,6 +1634,10 @@ function initFirebase() {
       const data = snapshot.val();
       if (data) {
         state = { ...state, ...data };
+        // Restore original insertion order (Firebase may reorder array keys)
+        if (Array.isArray(state.students)) {
+          state.students.sort((a, b) => (a._idx || 0) - (b._idx || 0));
+        }
         firebaseReady = true;
         refreshCurrentPage();
         updateBadge();
@@ -1657,7 +1661,13 @@ function initFirebase() {
         dataRef = db.ref('center-data/' + currentGrade);
         dataRef.on('value', snap => {
           const d = snap.val();
-          if (d) { const { settings, ...rest } = d; state = { ...state, ...rest }; }
+          if (d) {
+            const { settings, ...rest } = d;
+            state = { ...state, ...rest };
+            if (Array.isArray(state.students)) {
+              state.students.sort((a, b) => (a._idx || 0) - (b._idx || 0));
+            }
+          }
           updateBadge(); refreshCurrentPage(); showSyncStatus('live');
         });
       }
@@ -1845,6 +1855,10 @@ function selectGrade(grade) {
         // Merge carefully — don't overwrite settings
         const { settings, ...rest } = data;
         state = { ...state, ...rest };
+        // Restore original insertion order
+        if (Array.isArray(state.students)) {
+          state.students.sort((a, b) => (a._idx || 0) - (b._idx || 0));
+        }
       }
       updateBadge();
       refreshCurrentPage();
@@ -2042,7 +2056,8 @@ function addStudent() {
     }
   }
 
-  state.students.push({ name, code, phone, father, mother, center });
+  const _idx = Date.now() + Math.random(); // unique insertion order key
+  state.students.push({ name, code, phone, father, mother, center, _idx });
 
   // Add as absent in all existing sessions
   state.sessions.forEach(session => {
@@ -2289,7 +2304,8 @@ function handleExcelUpload(e) {
           phone:  row[2] ? String(row[2]) : '',
           father: row[3] ? String(row[3]) : '',
           mother: row[4] ? String(row[4]) : '',
-          center: row[5] ? String(row[5]).trim() : ''
+          center: row[5] ? String(row[5]).trim() : '',
+          _idx:   Date.now() + added  // preserve row order within the upload
         };
         state.students.push(newStudent);
         // Add as absent in all existing sessions
