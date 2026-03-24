@@ -2527,6 +2527,7 @@ function makeAttRow(s, status) {
         <button class="btn btn-sm ${isAbsent ? 'btn-success' : 'btn-secondary'}" onclick="markStudent('${s.code}','present')" style="${!isAbsent ? 'opacity:0.4' : ''}">✅ حضر</button>
         <button class="btn btn-sm ${!isAbsent ? 'btn-danger' : 'btn-secondary'}" onclick="markStudent('${s.code}','absent')" style="${isAbsent ? 'opacity:0.4' : ''}">❌ غاب</button>
         ${isAbsent ? `<button class="btn btn-sm" onclick="sendAbsenceWA('${s.code}')" style="background:rgba(37,211,102,0.15);color:#25d366;border:1px solid rgba(37,211,102,0.3);font-size:11px">📲 غياب</button>` : `<button class="btn btn-sm" onclick="sendQuizWA('${s.code}')" style="background:rgba(0,212,255,0.1);color:var(--accent);border:1px solid rgba(0,212,255,0.2);font-size:11px">📲 كويز</button>`}
+        <button class="btn btn-sm" onclick="showQRShareMenu('${s.code}')" title="إرسال QR" style="background:rgba(168,85,247,0.12);color:#a855f7;border:1px solid rgba(168,85,247,0.3);font-size:11px">📷 QR</button>
       </div>
     </td>
   </tr>`;
@@ -2849,7 +2850,7 @@ function updateAttStats() {
 
   const pc = document.getElementById('present-count'); if(pc) pc.textContent = present;
   const ac = document.getElementById('absent-count');  if(ac) ac.textContent = absent;
-  const cc = document.getElementById('comp-count');    if(cc) cc.textContent = compVisitorCount;
+  const cc = document.getElementById('comp-count');    if(cc) cc.textContent = compOutCount + compVisitorCount;
 
   const psc = document.getElementById('present-section-count');
   const asc = document.getElementById('absent-section-count');
@@ -3944,6 +3945,164 @@ function showQRModal(code) {
   openModal('qr-modal');
 }
 
+// ============================================================
+//  QR SHARE — صورة أو PDF
+// ============================================================
+function showQRShareMenu(code) {
+  const student = state.students.find(s => s.code === code);
+  if (!student) return;
+
+  const existing = document.getElementById('qr-share-menu');
+  if (existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.id = 'qr-share-menu';
+  el.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:9999;background:var(--surface);border:1px solid rgba(168,85,247,0.4);border-radius:16px;padding:18px 20px;font-family:Cairo,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:12px;max-width:300px';
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:14px;font-weight:900;color:#a855f7">📷 QR — ${student.name}</div>
+      <button onclick="document.getElementById('qr-share-menu').remove()" style="background:var(--surface2);border:none;color:var(--text2);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3)">اختر طريقة التصدير:</div>
+    <button onclick="downloadQRImage('${code}')" style="padding:11px 16px;background:linear-gradient(135deg,rgba(0,212,255,0.15),rgba(0,212,255,0.05));border:1px solid rgba(0,212,255,0.3);border-radius:12px;cursor:pointer;font-family:Cairo,sans-serif;color:var(--text);font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px;transition:all 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(0,212,255,0.3)'">
+      <span style="font-size:20px">🖼️</span>
+      <div style="text-align:right">
+        <div>تحميل كصورة PNG</div>
+        <div style="font-size:11px;color:var(--text3)">ملف صورة جاهز للإرسال</div>
+      </div>
+    </button>
+    <button onclick="downloadQRPDF('${code}')" style="padding:11px 16px;background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(168,85,247,0.05));border:1px solid rgba(168,85,247,0.3);border-radius:12px;cursor:pointer;font-family:Cairo,sans-serif;color:var(--text);font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px;transition:all 0.2s" onmouseover="this.style.borderColor='#a855f7'" onmouseout="this.style.borderColor='rgba(168,85,247,0.3)'">
+      <span style="font-size:20px">📄</span>
+      <div style="text-align:right">
+        <div>تحميل كـ PDF</div>
+        <div style="font-size:11px;color:var(--text3)">صفحة PDF قابلة للطباعة</div>
+      </div>
+    </button>`;
+  document.body.appendChild(el);
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 15000);
+}
+
+function _generateQRCanvas(code, size) {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+    document.body.appendChild(wrap);
+    new QRCode(wrap, {
+      text: code, width: size, height: size,
+      colorDark: '#000000', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    setTimeout(() => {
+      const img = wrap.querySelector('img') || wrap.querySelector('canvas');
+      if (!img) { document.body.removeChild(wrap); resolve(null); return; }
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+      if (img.tagName === 'CANVAS') {
+        ctx.drawImage(img, 0, 0, size, size);
+      } else {
+        img.onload = () => { ctx.drawImage(img, 0, 0, size, size); document.body.removeChild(wrap); resolve(canvas); };
+        img.src = img.src; // force re-trigger if already loaded
+        if (img.complete) { ctx.drawImage(img, 0, 0, size, size); document.body.removeChild(wrap); resolve(canvas); return; }
+        return;
+      }
+      document.body.removeChild(wrap);
+      resolve(canvas);
+    }, 300);
+  });
+}
+
+async function downloadQRImage(code) {
+  const el = document.getElementById('qr-share-menu');
+  if (el) el.remove();
+  const student = state.students.find(s => s.code === code);
+  if (!student) return;
+  showToast('⏳ جارٍ إنشاء الصورة...', 'info');
+
+  const qrSize = 400;
+  const padding = 40;
+  const textH = 80;
+  const totalW = qrSize + padding * 2;
+  const totalH = qrSize + padding * 2 + textH;
+
+  const qrCanvas = await _generateQRCanvas(code, qrSize);
+  if (!qrCanvas) { showToast('تعذّر إنشاء QR', 'error'); return; }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = totalW;
+  canvas.height = totalH;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  // QR
+  ctx.drawImage(qrCanvas, padding, padding, qrSize, qrSize);
+
+  // Name
+  ctx.fillStyle = '#111827';
+  ctx.font = 'bold 28px Cairo, Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(student.name, totalW / 2, qrSize + padding + 40);
+
+  // Code
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '18px monospace';
+  ctx.fillText(student.code, totalW / 2, qrSize + padding + 68);
+
+  const link = document.createElement('a');
+  link.download = `QR_${student.name}_${student.code}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showToast(`✅ تم تحميل QR صورة — ${student.name}`, 'success');
+}
+
+async function downloadQRPDF(code) {
+  const el = document.getElementById('qr-share-menu');
+  if (el) el.remove();
+  const student = state.students.find(s => s.code === code);
+  if (!student) return;
+  showToast('⏳ جارٍ إنشاء PDF...', 'info');
+
+  const qrCanvas = await _generateQRCanvas(code, 400);
+  if (!qrCanvas) { showToast('تعذّر إنشاء QR', 'error'); return; }
+
+  const imgData = qrCanvas.toDataURL('image/png');
+
+  const win = window.open('', '_blank');
+  if (!win) { showToast('السماح بالنوافذ المنبثقة مطلوب', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
+    <meta charset="UTF-8">
+    <title>QR — ${student.name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family:'Cairo',Arial,sans-serif; background:#fff; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+      .card { text-align:center; padding:48px 56px; border:2px solid #e5e7eb; border-radius:20px; display:inline-flex; flex-direction:column; align-items:center; gap:16px; }
+      .header { font-size:18px; color:#6b7280; font-weight:700; letter-spacing:1px; }
+      .qr-img { width:280px; height:280px; border:1px solid #f3f4f6; border-radius:8px; }
+      .name { font-size:26px; font-weight:900; color:#111827; }
+      .code { font-size:15px; color:#9ca3af; font-family:monospace; letter-spacing:2px; }
+      .footer { font-size:12px; color:#d1d5db; margin-top:8px; }
+      @media print { body { margin:0; } .no-print { display:none; } }
+    </style>
+  </head><body>
+    <div class="card">
+      <div class="header">Dr. Alaa Saber — بطاقة الطالب</div>
+      <img class="qr-img" src="${imgData}" alt="QR Code">
+      <div class="name">${student.name}</div>
+      <div class="code">${student.code}</div>
+      ${student.center ? `<div class="footer">🏫 ${student.center}</div>` : ''}
+    </div>
+    <script>window.onload = () => { window.print(); }<\/script>
+  </body></html>`);
+  win.document.close();
+  showToast(`✅ تم فتح PDF — ${student.name}`, 'success');
+}
+
 function printQR() {
   window.print();
 }
@@ -4485,7 +4644,7 @@ function showWAModal(messages, ref) {
           <div style="font-weight:700;font-size:14px">${s.name} <span style="font-family:monospace;font-size:11px;color:var(--text3)">${s.code}</span></div>
           <div style="font-size:12px;color:var(--text3);margin-top:3px">${m.msg}</div>
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-            ${s.phone ? `<button class="btn btn-success btn-sm" onclick="sendSingleWA(${i},'phone')" id="wa-btn-${i}-phone" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff">
+            ${s.phone ? `<button class="btn btn-sm" onclick="sendSingleWA(${i},'student')" id="wa-btn-${i}-student" style="background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff">
               📲 الطالب ${s.phone}
             </button>` : ''}
             ${s.father ? `<button class="btn btn-success btn-sm" onclick="sendSingleWA(${i},'father')" id="wa-btn-${i}-father">
@@ -4494,9 +4653,6 @@ function showWAModal(messages, ref) {
             ${s.mother ? `<button class="btn btn-success btn-sm" onclick="sendSingleWA(${i},'mother')" id="wa-btn-${i}-mother" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">
               📲 الأم ${s.mother}
             </button>` : ''}
-            <button class="btn btn-secondary btn-sm" onclick="sendQRWhatsApp(${i})" id="wa-btn-${i}-qr" title="إرسال QR الطالب" style="font-size:11px">
-              📱 QR
-            </button>
             ${!hasParents && !s.phone ? `<span style="font-size:12px;color:var(--danger)">⚠️ لا يوجد أرقام</span>` : ''}
           </div>
         </div>
@@ -4510,39 +4666,28 @@ function showWAModal(messages, ref) {
 
 let waSentCount = 0;
 
-function sendQRWhatsApp(idx) {
+function sendSingleWA(idx, target) {
   const m = waMessages[idx];
-  const s = m.student;
-  // Build QR as a WhatsApp-friendly link message
-  const qrMsg = `📱 *QR Code — Dr. Alaa Saber*\n\nالطالب: *${s.name}*\nالكود: ${s.code}\n\n🔗 رابط حضور الطالب:\nhttps://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(s.code)}&size=300x300`;
-  const numbers = [s.phone, s.father, s.mother].filter(Boolean);
-  if (!numbers.length) { showToast('لا يوجد أرقام لهذا الطالب', 'error'); return; }
-  // Send to first available number
-  sendWhatsApp(numbers[0], qrMsg);
-  const btn = document.getElementById(`wa-btn-${idx}-qr`);
-  if (btn) { btn.textContent = '✅ QR'; btn.disabled = true; btn.style.opacity = '0.6'; }
-  showToast(`📱 تم إرسال QR لـ ${s.name}`, 'success');
-}
-
-function sendSingleWA(idx, parent) {
-  const m = waMessages[idx];
-  const phone = parent === 'phone' ? m.student.phone : parent === 'father' ? m.student.father : m.student.mother;
+  let phone;
+  if (target === 'father') phone = m.student.father;
+  else if (target === 'mother') phone = m.student.mother;
+  else if (target === 'student') phone = m.student.phone;
   if (!phone) return;
   sendWhatsApp(phone, m.msg);
 
   // Mark button as sent
-  const btn = document.getElementById(`wa-btn-${idx}-${parent}`);
+  const btn = document.getElementById(`wa-btn-${idx}-${target}`);
   if (btn) { btn.textContent = '✅ تم الفتح'; btn.disabled = true; btn.style.opacity = '0.6'; }
 
-  // Check if all relevant contacts for this student are sent → mark row green
+  // Check if all numbers for this student are sent → mark row green
   const row = document.getElementById(`wa-item-${idx}`);
-  const phBtn = document.getElementById(`wa-btn-${idx}-phone`);
+  const sBtn = document.getElementById(`wa-btn-${idx}-student`);
   const fBtn = document.getElementById(`wa-btn-${idx}-father`);
   const mBtn = document.getElementById(`wa-btn-${idx}-mother`);
-  const phDone = !m.student.phone || phBtn?.disabled;
-  const fDone = !m.student.father || fBtn?.disabled;
-  const mDone = !m.student.mother || mBtn?.disabled;
-  if (phDone && fDone && mDone) {
+  const sDone = !m.student.phone   || sBtn?.disabled;
+  const fDone = !m.student.father  || fBtn?.disabled;
+  const mDone = !m.student.mother  || mBtn?.disabled;
+  if (sDone && fDone && mDone) {
     row.style.borderColor = 'var(--accent3)';
     row.style.background = 'rgba(16,185,129,0.05)';
     document.getElementById(`wa-check-${idx}`).style.opacity = '1';
@@ -4555,12 +4700,12 @@ function sendSingleWA(idx, parent) {
 
 function sendAllWA() {
   waMessages.forEach((m, i) => {
-    const delay = i * 1000;
-    if (m.student.phone)  setTimeout(() => sendSingleWA(i, 'phone'),  delay);
-    if (m.student.father) setTimeout(() => sendSingleWA(i, 'father'), delay + 400);
-    if (m.student.mother) setTimeout(() => sendSingleWA(i, 'mother'), delay + 800);
+    let delay = 0;
+    if (m.student.phone)   { setTimeout(() => sendSingleWA(i, 'student'), delay); delay += 400; }
+    if (m.student.father)  { setTimeout(() => sendSingleWA(i, 'father'),  delay); delay += 400; }
+    if (m.student.mother)  { setTimeout(() => sendSingleWA(i, 'mother'),  delay); delay += 400; }
   });
-  showToast('📲 جارٍ فتح واتساب لكل المستلمين...', 'info');
+  showToast('📲 جارٍ فتح واتساب لكل الأرقام...', 'info');
 }
 
 function editStudent(code) {
