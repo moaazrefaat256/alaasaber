@@ -2563,12 +2563,11 @@ function renderAttGrid() {
     ? state.students.filter(s => s.center === sessionCenter && !s.isGuest)
     : state.students.filter(s => !s.isGuest);
 
-  // Guest/compensation students: stored in attendance.guests
-  const guestsMap = state.attendance['guests'] || {};
+  // Guest/compensation students: stored per-session
+  const guestsMap = state.attendance['guests_' + state.currentSession] || {};
   const allPresentCodes = Object.keys(sessionData).filter(c => sessionData[c] === 'present');
   const guestStudents = allPresentCodes
     .filter(code => {
-      // Is this a guest? Either in guestsMap OR has تعويض note but not in centerStudents
       const notInCenter = !centerStudents.find(s => s.code === code);
       if (!notInCenter) return false;
       return guestsMap[code] || (sessionNotes[code] || '').includes('تعويض');
@@ -2650,7 +2649,7 @@ function markCompensation(code) {
         style="flex:1;padding:10px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         ✅ تسجيل
       </button>
-      <button onclick="document.getElementById('comp-toast').remove();scanPaused=false;"
+      <button onclick="document.getElementById('comp-toast').remove();scanPaused=false;setTimeout(()=>{if(scanStream)requestAnimationFrame(tick);},100);"
         style="padding:10px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         إلغاء
       </button>
@@ -2670,7 +2669,8 @@ function confirmCompensation(code) {
 
   const el = document.getElementById('comp-toast');
   if (el) el.remove();
-  scanPaused = false; // استأنف السكانر
+  scanPaused = false;
+  setTimeout(() => { if (scanStream) requestAnimationFrame(tick); }, 100);
 
   if (!state.currentSession) { showToast('اختر محاضرة أولاً', 'error'); return; }
   if (!state.attendance[state.currentSession]) state.attendance[state.currentSession] = {};
@@ -2832,7 +2832,7 @@ function updateAttStats() {
     : state.students.filter(s => !s.isGuest);
 
   // Separate: compensation visitors vs home students who compensated OUT
-  const guestsMap = state.attendance['guests'] || {};
+  const guestsMap = (state.attendance['guests_' + (state.currentSession||'')] || {});
 
   // Visitors = students from OTHER centers who came here
   const compVisitorCount = Object.keys(data).filter(code => {
@@ -2963,7 +2963,7 @@ function showCompensationDialog(code, student) {
         style="flex:1;padding:10px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         ✅ تسجيل تعويض
       </button>
-      <button onclick="document.getElementById('comp-dialog').remove();document.getElementById('qr-input').value='';scanPaused=false;"
+      <button onclick="document.getElementById('comp-dialog').remove();document.getElementById('qr-input').value='';scanPaused=false;setTimeout(()=>{if(scanStream)requestAnimationFrame(tick);},100);"
         style="padding:10px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         إلغاء
       </button>
@@ -2976,7 +2976,8 @@ function showCompensationDialog(code, student) {
 }
 
 function confirmCompDialog(code, name, fromCenter) {
-  scanPaused = false; // استأنف السكانر
+  scanPaused = false;
+  setTimeout(() => { if (scanStream) requestAnimationFrame(tick); }, 100);
   const noteEl = document.getElementById('comp-dialog-note');
   const extra = noteEl ? noteEl.value.trim() : '';
 
@@ -2995,9 +2996,10 @@ function confirmCompDialog(code, name, fromCenter) {
   if (!state.attendance[noteKey]) state.attendance[noteKey] = {};
   state.attendance[noteKey][code] = 'تعويض من ' + fromCenter + (extra ? ' — ' + extra : '');
 
-  // ── 2. Store guest info ──
-  if (!state.attendance['guests']) state.attendance['guests'] = {};
-  state.attendance['guests'][code] = { name, center: fromCenter, isGuest: true };
+  // ── 2. Store guest info per-session ──
+  const guestKey = 'guests_' + state.currentSession;
+  if (!state.attendance[guestKey]) state.attendance[guestKey] = {};
+  state.attendance[guestKey][code] = { name, center: fromCenter, isGuest: true };
 
   // ── 3. Auto-mark PRESENT in home center's matching session ──
   // Find the home center session the student was absent in
@@ -3146,7 +3148,7 @@ function renderGradesTable(id, filter) {
 
   // Compensation visitors DO appear in visiting center's quiz table
   // So teacher can enter their grade — grade stored in comp_grades for home center
-  const guestsMap = state.attendance['guests'] || {};
+  const guestsMap = (state.attendance['guests_' + (state.currentSession||'')] || {});
   const compVisitors = [];
   if (quiz.session) {
     const sessionNotes = state.attendance[quiz.session + '_notes'] || {};
@@ -3241,7 +3243,7 @@ function collectGrades() {
   }
 
   // Compensation visitors shown in this center's quiz
-  const guestsMap = state.attendance['guests'] || {};
+  const guestsMap = (state.attendance['guests_' + (state.currentSession||'')] || {});
   const compVisitors = [];
   if (quiz.session) {
     const sessionNotes = state.attendance[quiz.session + '_notes'] || {};
@@ -3670,7 +3672,7 @@ function renderRankingReport() {
 function exportReportExcel() {
   const wb = XLSX.utils.book_new();
   const date = new Date().toLocaleDateString('ar-EG').replace(/\//g,'-');
-  const guestsMap = state.attendance['guests'] || {};
+  const guestsMap = (state.attendance['guests_' + (state.currentSession||'')] || {});
 
   // For each session, find which students are compensating (present in another center)
   // key: code → Set of session IDs where they are compensating
@@ -4225,8 +4227,11 @@ function clearAllData() {
 function confirmClearAll() {
   const el = document.getElementById('clear-all-toast');
   if (el) el.remove();
-  state = { students:[], sessions:[], attendance:{}, quizzes:[], grades:{}, notifications:[], settings: state.settings };
+  const savedSettings = state.settings;
+  state = { students:[], sessions:[], attendance:{}, quizzes:[], grades:{}, notifications:[], settings: savedSettings };
+  if (dataRef) dataRef.set(state).catch(()=>{});
   saveState();
+  renderDashboard();
   showPage('dashboard');
   showToast('تم حذف كل البيانات', 'info');
 }
@@ -4566,7 +4571,7 @@ function startDecoding() {
 
   function tick() {
     if (!scanStream) return;
-    if (scanPaused) { setTimeout(() => { if (scanStream) requestAnimationFrame(tick); }, 200); return; }
+    if (scanPaused) { setTimeout(() => { if (scanStream && !scanPaused) requestAnimationFrame(tick); }, 300); return; }
 
     if (video.readyState >= 2 && video.videoWidth > 0) {
       // Set canvas size once
@@ -4584,9 +4589,12 @@ function startDecoding() {
         // dontInvert is fastest — works for standard QR codes
         const result = jsQR(imgData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
         if (result && result.data.trim()) {
+          const wasPaused = scanPaused;
           handleScannedCode(result.data.trim());
-          // Short pause then resume scanning
-          setTimeout(() => { if (scanStream) requestAnimationFrame(tick); }, SCAN_COOLDOWN);
+          // لو السكانر اتوقف بسبب compensation dialog — متكملش، هيرجع manually
+          if (!scanPaused) {
+            setTimeout(() => { if (scanStream && !scanPaused) requestAnimationFrame(tick); }, SCAN_COOLDOWN);
+          }
           return;
         }
       } catch(e) {}
