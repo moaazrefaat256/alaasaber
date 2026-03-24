@@ -2650,7 +2650,7 @@ function markCompensation(code) {
         style="flex:1;padding:10px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         ✅ تسجيل
       </button>
-      <button onclick="document.getElementById('comp-toast').remove()"
+      <button onclick="document.getElementById('comp-toast').remove();scanPaused=false;"
         style="padding:10px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         إلغاء
       </button>
@@ -2670,6 +2670,7 @@ function confirmCompensation(code) {
 
   const el = document.getElementById('comp-toast');
   if (el) el.remove();
+  scanPaused = false; // استأنف السكانر
 
   if (!state.currentSession) { showToast('اختر محاضرة أولاً', 'error'); return; }
   if (!state.attendance[state.currentSession]) state.attendance[state.currentSession] = {};
@@ -2777,15 +2778,26 @@ function getLastAbsenceNote(code) {
 function sendAbsenceWA(code) {
   const s = state.students.find(st => st.code === code);
   if (!s) return;
-  if (!s.father && !s.mother) { showToast('لا يوجد أرقام لهذا الطالب', 'error'); return; }
+  if (!s.father && !s.mother && !s.phone) { showToast('لا يوجد أرقام لهذا الطالب', 'error'); return; }
   const session = state.sessions.find(se => se.id === state.currentSession);
-  const msg = state.settings.absenceTemplate
+
+  // النوت الحالية للمحاضرة + النوت الدايم
+  const sessionNote = state.currentSession
+    ? (state.attendance[state.currentSession + '_notes']?.[code] || '')
+    : '';
+  const pinnedNote = s.pinnedNote || '';
+
+  let msg = state.settings.absenceTemplate
     .replace(/{name}/g, s.name)
     .replace(/{code}/g, s.code)
     .replace(/{session}/g, session?.name || '')
     .replace(/{date}/g, session?.date || '')
-    .replace(/{absences}/g, getStudentAbsences(s.code))
-    + '\n\n📊 متابعة الطالب: ' + parentLink2;
+    .replace(/{absences}/g, getStudentAbsences(s.code));
+
+  // ضيف النوت لو موجودة
+  const notes = [pinnedNote, sessionNote].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+  if (notes.length) msg += '\n\n📝 *ملاحظة:* ' + notes.join(' | ');
+
   showWAModal([{ student: s, msg }], `غياب ${s.name}`);
 }
 
@@ -2951,7 +2963,7 @@ function showCompensationDialog(code, student) {
         style="flex:1;padding:10px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         ✅ تسجيل تعويض
       </button>
-      <button onclick="document.getElementById('comp-dialog').remove();document.getElementById('qr-input').value=''"
+      <button onclick="document.getElementById('comp-dialog').remove();document.getElementById('qr-input').value='';scanPaused=false;"
         style="padding:10px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:13px">
         إلغاء
       </button>
@@ -2964,6 +2976,7 @@ function showCompensationDialog(code, student) {
 }
 
 function confirmCompDialog(code, name, fromCenter) {
+  scanPaused = false; // استأنف السكانر
   const noteEl = document.getElementById('comp-dialog-note');
   const extra = noteEl ? noteEl.value.trim() : '';
 
@@ -4463,6 +4476,7 @@ function startCamera() {
 let zxingReader = null;
 let lastScannedCode = '';
 let lastScannedTime = 0;
+let scanPaused = false; // يتجمد السكانر عند dialog التعويض
 const SCAN_COOLDOWN   = 1500; // ms before same code can re-scan
 const ALREADY_COOLDOWN = 800;  // ms before "already registered" repeats
 
@@ -4552,6 +4566,7 @@ function startDecoding() {
 
   function tick() {
     if (!scanStream) return;
+    if (scanPaused) { setTimeout(() => { if (scanStream) requestAnimationFrame(tick); }, 200); return; }
 
     if (video.readyState >= 2 && video.videoWidth > 0) {
       // Set canvas size once
@@ -4619,6 +4634,7 @@ function handleScannedCode(code) {
   if (!student) {
     lastScannedCode = trimmed;
     lastScannedTime = now;
+    scanPaused = true; // أوقف السكانر لحد ما يتاكد
     playBeep(false);
     if (statusEl) statusEl.innerHTML = `<span style="color:#a855f7">🔄 تعويض: ${trimmed}</span>`;
     const any = state.students.find(s => s.code === trimmed);
@@ -4855,11 +4871,24 @@ function buildStudentSummaryMsg(s) {
     return g !== undefined ? '   • ' + q.name + ': ' + g + '/' + q.total : null;
   }).filter(Boolean).join('\n');
 
+  // اجمع كل النوتات — النوت الدايم + آخر نوت محاضرة
+  const pinnedNote = s.pinnedNote || '';
+  const lastSessionNote = (() => {
+    for (let i = state.sessions.length - 1; i >= 0; i--) {
+      const sid = state.sessions[i].id;
+      const note = state.attendance[sid + '_notes']?.[s.code] || '';
+      if (note) return note;
+    }
+    return '';
+  })();
+  const notes = [pinnedNote, lastSessionNote].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+
   let msg = '📚 *Dr. Alaa Saber*\n';
   msg += '━━━━━━━━━━━━━━━\n';
   msg += '👤 الطالب: *' + s.name + '*\n';
   msg += '🔢 الكود: ' + s.code + '\n';
   if (s.center) msg += '🏫 السنتر: ' + s.center + '\n';
+  if (notes.length) msg += '📌 ملاحظة: ' + notes.join(' | ') + '\n';
   msg += '━━━━━━━━━━━━━━━\n';
   msg += '📅 *الحضور*\n';
   msg += '   • المحاضرات: ' + totalSessions + '\n';
