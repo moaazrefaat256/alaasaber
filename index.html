@@ -977,6 +977,7 @@
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-success btn-sm" onclick="sendWhatsAppAll()">📲 إرسال للكل</button>
             <button class="btn btn-danger btn-sm" onclick="deleteAllStudents()">🗑️ حذف الكل</button>
+            <button class="btn btn-secondary btn-sm" id="sort-toggle-btn" onclick="toggleStudentSort()" title="ترتيب الطلاب">🔢 ترتيب بالكود</button>
             <select id="center-filter" onchange="filterStudents()" style="width:160px;font-size:12px;padding:8px 12px">
               <option value="">كل السنترات</option>
             </select>
@@ -1080,7 +1081,11 @@
             <div class="card-title">كشف الحضور</div>
             <div class="card-subtitle" id="current-session-label">اختر محاضرة أولاً</div>
           </div>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <div class="search-wrap">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="att-search" placeholder="ابحث باسم أو كود..." oninput="renderAttGrid()" style="width:180px;padding-right:38px;font-size:13px">
+            </div>
             <button class="btn btn-secondary btn-sm" onclick="markAllPresent()">✅ تحضير الكل</button>
             <button class="btn btn-secondary btn-sm" onclick="markAllAbsent()">❌ تغيب الكل</button>
             <button class="btn btn-primary btn-sm" onclick="saveAttendance()">💾 حفظ وإرسال الإشعارات</button>
@@ -2093,6 +2098,19 @@ function confirmDeleteStudent(code) {
   showToast('تم حذف الطالب', 'info');
 }
 
+let studentSortByCode = false;
+
+function toggleStudentSort() {
+  studentSortByCode = !studentSortByCode;
+  const btn = document.getElementById('sort-toggle-btn');
+  if (btn) {
+    btn.textContent = studentSortByCode ? '📋 الترتيب الأصلي' : '🔢 ترتيب بالكود';
+    btn.style.borderColor = studentSortByCode ? 'var(--accent)' : '';
+    btn.style.color = studentSortByCode ? 'var(--accent)' : '';
+  }
+  filterStudents();
+}
+
 function filterStudents() {
   const q = document.getElementById('student-search').value.toLowerCase();
   const c = document.getElementById('center-filter')?.value || '';
@@ -2113,11 +2131,16 @@ function renderStudents() {
 
 function renderStudentsTable(filter = '', centerFilter = '') {
   const tbody = document.getElementById('students-tbody');
-  const filtered = state.students.filter(s => {
+  let filtered = state.students.filter(s => {
     const matchText = !filter || s.name.includes(filter) || s.code.includes(filter);
     const matchCenter = !centerFilter || s.center === centerFilter;
     return matchText && matchCenter;
   });
+
+  // Sort by code if enabled, otherwise keep original insertion order
+  if (studentSortByCode) {
+    filtered = [...filtered].sort((a, b) => parseInt(a.code) - parseInt(b.code));
+  }
 
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:40px">${filter ? 'لا توجد نتائج' : 'لا يوجد طلاب مسجلين'}</td></tr>`;
@@ -2585,11 +2608,16 @@ function renderAttGrid() {
   const relevantStudents = [...centerStudents, ...guestStudents];
   // Exclude compensating students from absent list (they're shown as guests in present)
   const sessionNotesForFilter = state.attendance[state.currentSession + '_notes'] || {};
-  const presentStudents = relevantStudents.filter(s => (sessionData[s.code] || 'absent') === 'present');
+
+  // Apply search filter if present
+  const attSearchVal = (document.getElementById('att-search')?.value || '').trim().toLowerCase();
+  const matchSearch = (s) => !attSearchVal || s.name.toLowerCase().includes(attSearchVal) || s.code.includes(attSearchVal);
+
+  const presentStudents = relevantStudents.filter(s => (sessionData[s.code] || 'absent') === 'present' && matchSearch(s));
   const absentStudents  = centerStudents.filter(s => {
     if ((sessionData[s.code] || 'absent') !== 'absent') return false;
     const note = sessionNotesForFilter[s.code] || '';
-    return !note.includes('تعويض'); // exclude if compensating elsewhere
+    return !note.includes('تعويض') && matchSearch(s);
   });
 
   const tableHeader = `<table style="width:100%;min-width:600px;border-collapse:collapse;font-size:13px">
@@ -4935,21 +4963,40 @@ function showMsgPicker(students) {
   // Title
   document.getElementById('msg-picker-title').textContent = isSingle ? `📲 إرسال لـ ${s.name}` : `📲 إرسال لـ ${students.length} طالب`;
 
+  // Filter sessions and quizzes by student's center (if single student or all same center)
+  const studentCenter = isSingle ? (s.center || '') : '';
+  // If all selected students share the same center, filter by it; otherwise show all
+  const allSameCenter = !isSingle && students.every(st => st.center === students[0].center)
+    ? students[0].center || ''
+    : studentCenter;
+  const effectiveCenter = isSingle ? studentCenter : allSameCenter;
+
+  // Filter sessions for this center
+  const pickerSessions = effectiveCenter
+    ? state.sessions.filter(se => (se.center || '') === effectiveCenter)
+    : state.sessions;
+
+  // Filter quizzes: only those linked to sessions of this center (or all if no center)
+  const centerSessionIds = new Set(pickerSessions.map(se => se.id));
+  const pickerQuizzes = effectiveCenter
+    ? state.quizzes.filter(q => !q.sessionId || centerSessionIds.has(q.sessionId))
+    : state.quizzes;
+
   // Quiz row
-  const quizOpts = state.quizzes.map(q => `<option value="${q.id}">${q.name} (/${q.total})</option>`).join('');
+  const quizOpts = pickerQuizzes.map(q => `<option value="${q.id}">${q.name} (/${q.total})</option>`).join('');
   const qRow = document.getElementById('msg-picker-quiz-row');
-  if (qRow) { qRow.style.display = state.quizzes.length ? 'flex' : 'none'; qRow.style.flexDirection = 'column'; }
+  if (qRow) { qRow.style.display = pickerQuizzes.length ? 'flex' : 'none'; qRow.style.flexDirection = 'column'; }
   const qSel = document.getElementById('msg-picker-quiz-select');
   if (qSel) qSel.innerHTML = '<option value="">اختر الكويز</option>' + quizOpts;
 
-  // Session row — always show if sessions exist
+  // Session row
   const sRow = document.getElementById('msg-picker-session-row');
-  if (sRow) { sRow.style.display = state.sessions.length ? 'flex' : 'none'; sRow.style.flexDirection = 'column'; }
+  if (sRow) { sRow.style.display = pickerSessions.length ? 'flex' : 'none'; sRow.style.flexDirection = 'column'; }
   const sSel = document.getElementById('msg-picker-session-select');
   if (sSel) {
-    sSel.innerHTML = '<option value="">اختر المحاضرة</option>' + state.sessions.map(se => `<option value="${se.id}">${se.name} — ${se.date}</option>`).join('');
+    sSel.innerHTML = '<option value="">اختر المحاضرة</option>' + pickerSessions.map(se => `<option value="${se.id}">${se.name} — ${se.date}</option>`).join('');
     // Pre-select last session
-    if (state.sessions.length) sSel.value = state.sessions[state.sessions.length - 1].id;
+    if (pickerSessions.length) sSel.value = pickerSessions[pickerSessions.length - 1].id;
   }
 
   // Reset selection
