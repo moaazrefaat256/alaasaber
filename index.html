@@ -977,7 +977,6 @@
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-success btn-sm" onclick="sendWhatsAppAll()">📲 إرسال للكل</button>
             <button class="btn btn-danger btn-sm" onclick="deleteAllStudents()">🗑️ حذف الكل</button>
-            <button class="btn btn-secondary btn-sm" id="sort-toggle-btn" onclick="toggleStudentSort()" title="ترتيب الطلاب">🔢 ترتيب بالكود</button>
             <select id="center-filter" onchange="filterStudents()" style="width:160px;font-size:12px;padding:8px 12px">
               <option value="">كل السنترات</option>
             </select>
@@ -1634,9 +1633,15 @@ function initFirebase() {
       const data = snapshot.val();
       if (data) {
         state = { ...state, ...data };
-        // Restore original insertion order (Firebase may reorder array keys)
+        // Restore original insertion order (Firebase may reorder array keys by code)
         if (Array.isArray(state.students)) {
+          // Assign _idx to any old students that don't have it yet, based on their current position
+          let needsSave = false;
+          state.students.forEach((s, i) => {
+            if (!s._idx) { s._idx = i + 1; needsSave = true; }
+          });
           state.students.sort((a, b) => (a._idx || 0) - (b._idx || 0));
+          if (needsSave) setTimeout(() => saveState(), 500);
         }
         firebaseReady = true;
         refreshCurrentPage();
@@ -1665,7 +1670,12 @@ function initFirebase() {
             const { settings, ...rest } = d;
             state = { ...state, ...rest };
             if (Array.isArray(state.students)) {
+              let needsSave = false;
+              state.students.forEach((s, i) => {
+                if (!s._idx) { s._idx = i + 1; needsSave = true; }
+              });
               state.students.sort((a, b) => (a._idx || 0) - (b._idx || 0));
+              if (needsSave) setTimeout(() => saveState(), 500);
             }
           }
           updateBadge(); refreshCurrentPage(); showSyncStatus('live');
@@ -1857,15 +1867,14 @@ function selectGrade(grade) {
         state = { ...state, ...rest };
         // Restore original insertion order
         if (Array.isArray(state.students)) {
+          let needsSave = false;
+          state.students.forEach((s, i) => {
+            if (!s._idx) { s._idx = i + 1; needsSave = true; }
+          });
           state.students.sort((a, b) => (a._idx || 0) - (b._idx || 0));
+          if (needsSave) setTimeout(() => saveState(), 500);
         }
       }
-      updateBadge();
-      refreshCurrentPage();
-      showSyncStatus('live');
-    }, () => {
-      showSyncStatus('offline');
-    });
   } else {
     // No Firebase — try localStorage backup
     try {
@@ -2114,19 +2123,7 @@ function confirmDeleteStudent(code) {
   showToast('تم حذف الطالب', 'info');
 }
 
-let studentSortByCode = false;
 let attSortByCode = false;
-
-function toggleStudentSort() {
-  studentSortByCode = !studentSortByCode;
-  const btn = document.getElementById('sort-toggle-btn');
-  if (btn) {
-    btn.textContent = studentSortByCode ? '📋 الترتيب الأصلي' : '🔢 ترتيب بالكود';
-    btn.style.borderColor = studentSortByCode ? 'var(--accent)' : '';
-    btn.style.color = studentSortByCode ? 'var(--accent)' : '';
-  }
-  filterStudents();
-}
 
 function toggleAttSort() {
   attSortByCode = !attSortByCode;
@@ -2159,16 +2156,11 @@ function renderStudents() {
 
 function renderStudentsTable(filter = '', centerFilter = '') {
   const tbody = document.getElementById('students-tbody');
-  let filtered = state.students.filter(s => {
+  const filtered = state.students.filter(s => {
     const matchText = !filter || s.name.includes(filter) || s.code.includes(filter);
     const matchCenter = !centerFilter || s.center === centerFilter;
     return matchText && matchCenter;
   });
-
-  // Sort by code if enabled, otherwise keep original insertion order
-  if (studentSortByCode) {
-    filtered = [...filtered].sort((a, b) => parseInt(a.code) - parseInt(b.code));
-  }
 
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:40px">${filter ? 'لا توجد نتائج' : 'لا يوجد طلاب مسجلين'}</td></tr>`;
