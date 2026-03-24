@@ -3946,7 +3946,7 @@ function showQRModal(code) {
 }
 
 // ============================================================
-//  QR SHARE — صورة أو PDF
+//  QR SHARE — واتساب (صورة أو PDF) + تحميل مباشر
 // ============================================================
 function showQRShareMenu(code) {
   const student = state.students.find(s => s.code === code);
@@ -3955,33 +3955,77 @@ function showQRShareMenu(code) {
   const existing = document.getElementById('qr-share-menu');
   if (existing) existing.remove();
 
+  // بناء أزرار الأرقام المتاحة
+  const numbers = [];
+  if (student.phone)  numbers.push({ label: '👤 الطالب', phone: student.phone,  color: '#0284c7', border: 'rgba(2,132,199,0.35)' });
+  if (student.father) numbers.push({ label: '👨 الأب',   phone: student.father, color: '#10b981', border: 'rgba(16,185,129,0.35)' });
+  if (student.mother) numbers.push({ label: '👩 الأم',   phone: student.mother, color: '#a855f7', border: 'rgba(168,85,247,0.35)' });
+
+  const noNumbers = !numbers.length;
+
+  const phoneButtons = numbers.map(n => `
+    <div style="border:1px solid ${n.border};border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:7px">
+      <div style="font-size:12px;font-weight:700;color:${n.color}">${n.label} — ${n.phone}</div>
+      <div style="display:flex;gap:6px">
+        <button onclick="sendQRvia('${code}','img','${n.phone}')"
+          style="flex:1;padding:7px 10px;background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.25);border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;color:var(--accent);transition:all 0.2s"
+          onmouseover="this.style.background='rgba(0,212,255,0.2)'" onmouseout="this.style.background='rgba(0,212,255,0.1)'">
+          🖼️ صورة
+        </button>
+        <button onclick="sendQRvia('${code}','pdf','${n.phone}')"
+          style="flex:1;padding:7px 10px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.25);border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;color:#a855f7;transition:all 0.2s"
+          onmouseover="this.style.background='rgba(168,85,247,0.2)'" onmouseout="this.style.background='rgba(168,85,247,0.1)'">
+          📄 PDF
+        </button>
+      </div>
+    </div>`).join('');
+
   const el = document.createElement('div');
   el.id = 'qr-share-menu';
-  el.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:9999;background:var(--surface);border:1px solid rgba(168,85,247,0.4);border-radius:16px;padding:18px 20px;font-family:Cairo,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:12px;max-width:300px';
+  el.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:9999;background:var(--surface);border:1px solid rgba(168,85,247,0.4);border-radius:16px;padding:18px 20px;font-family:Cairo,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:12px;width:300px';
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="font-size:14px;font-weight:900;color:#a855f7">📷 QR — ${student.name}</div>
       <button onclick="document.getElementById('qr-share-menu').remove()" style="background:var(--surface2);border:none;color:var(--text2);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:13px">✕</button>
     </div>
-    <div style="font-size:12px;color:var(--text3)">اختر طريقة التصدير:</div>
-    <button onclick="downloadQRImage('${code}')" style="padding:11px 16px;background:linear-gradient(135deg,rgba(0,212,255,0.15),rgba(0,212,255,0.05));border:1px solid rgba(0,212,255,0.3);border-radius:12px;cursor:pointer;font-family:Cairo,sans-serif;color:var(--text);font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px;transition:all 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(0,212,255,0.3)'">
-      <span style="font-size:20px">🖼️</span>
-      <div style="text-align:right">
-        <div>تحميل كصورة PNG</div>
-        <div style="font-size:11px;color:var(--text3)">ملف صورة جاهز للإرسال</div>
-      </div>
-    </button>
-    <button onclick="downloadQRPDF('${code}')" style="padding:11px 16px;background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(168,85,247,0.05));border:1px solid rgba(168,85,247,0.3);border-radius:12px;cursor:pointer;font-family:Cairo,sans-serif;color:var(--text);font-size:13px;font-weight:700;display:flex;align-items:center;gap:10px;transition:all 0.2s" onmouseover="this.style.borderColor='#a855f7'" onmouseout="this.style.borderColor='rgba(168,85,247,0.3)'">
-      <span style="font-size:20px">📄</span>
-      <div style="text-align:right">
-        <div>تحميل كـ PDF</div>
-        <div style="font-size:11px;color:var(--text3)">صفحة PDF قابلة للطباعة</div>
-      </div>
-    </button>`;
+    ${noNumbers
+      ? `<div style="font-size:12px;color:var(--danger);text-align:center;padding:8px">⚠️ لا يوجد أرقام لهذا الطالب</div>`
+      : `<div style="font-size:11px;color:var(--text3)">اختر المستلم ونوع الملف — هيتحمل ويفتح واتساب تلقائياً:</div>
+         ${phoneButtons}`
+    }
+    <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;gap:6px">
+      <button onclick="downloadQRImage('${code}')" style="flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-size:11px;color:var(--text2)">⬇️ صورة فقط</button>
+      <button onclick="downloadQRPDF('${code}')"  style="flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-size:11px;color:var(--text2)">⬇️ PDF فقط</button>
+    </div>`;
   document.body.appendChild(el);
-  setTimeout(() => { if (el.parentNode) el.remove(); }, 15000);
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 20000);
 }
 
+// إرسال QR عبر واتساب — يحمّل الملف ويفتح واتساب في نفس الوقت
+async function sendQRvia(code, type, phone) {
+  const el = document.getElementById('qr-share-menu');
+  if (el) el.remove();
+  const student = state.students.find(s => s.code === code);
+  if (!student || !phone) return;
+
+  showToast('⏳ جارٍ تجهيز الملف...', 'info');
+
+  if (type === 'img') {
+    await downloadQRImage(code);          // يحمّل الصورة
+  } else {
+    await downloadQRPDF(code);            // يفتح PDF للطباعة / تحميل
+  }
+
+  // بعد ثانية — يفتح واتساب بالرقم
+  setTimeout(() => {
+    const typeName = type === 'img' ? 'صورة الـ QR' : 'PDF الـ QR';
+    const msg = `📷 بطاقة QR الطالب — Dr. Alaa Saber\n\n👤 الطالب: *${student.name}*\n🔢 الكود: ${student.code}\n\n${typeName} في المرفقات ⬆️`;
+    sendWhatsApp(phone, msg);
+    showToast('📲 فتح واتساب — ارفق الملف المحمّل', 'success');
+  }, 800);
+}
+
+// ---- توليد canvas للـ QR ----
 function _generateQRCanvas(code, size) {
   return new Promise(resolve => {
     const wrap = document.createElement('div');
@@ -4002,28 +4046,23 @@ function _generateQRCanvas(code, size) {
       ctx.fillRect(0, 0, size, size);
       if (img.tagName === 'CANVAS') {
         ctx.drawImage(img, 0, 0, size, size);
+        document.body.removeChild(wrap);
+        resolve(canvas);
       } else {
-        img.onload = () => { ctx.drawImage(img, 0, 0, size, size); document.body.removeChild(wrap); resolve(canvas); };
-        img.src = img.src; // force re-trigger if already loaded
-        if (img.complete) { ctx.drawImage(img, 0, 0, size, size); document.body.removeChild(wrap); resolve(canvas); return; }
-        return;
+        const tryDraw = () => { ctx.drawImage(img, 0, 0, size, size); document.body.removeChild(wrap); resolve(canvas); };
+        if (img.complete) { tryDraw(); return; }
+        img.onload = tryDraw;
       }
-      document.body.removeChild(wrap);
-      resolve(canvas);
     }, 300);
   });
 }
 
+// ---- تحميل صورة PNG ----
 async function downloadQRImage(code) {
-  const el = document.getElementById('qr-share-menu');
-  if (el) el.remove();
   const student = state.students.find(s => s.code === code);
   if (!student) return;
-  showToast('⏳ جارٍ إنشاء الصورة...', 'info');
 
-  const qrSize = 400;
-  const padding = 40;
-  const textH = 80;
+  const qrSize = 400, padding = 40, textH = 80;
   const totalW = qrSize + padding * 2;
   const totalH = qrSize + padding * 2 + textH;
 
@@ -4031,24 +4070,15 @@ async function downloadQRImage(code) {
   if (!qrCanvas) { showToast('تعذّر إنشاء QR', 'error'); return; }
 
   const canvas = document.createElement('canvas');
-  canvas.width = totalW;
-  canvas.height = totalH;
+  canvas.width = totalW; canvas.height = totalH;
   const ctx = canvas.getContext('2d');
-
-  // Background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, totalW, totalH);
-
-  // QR
   ctx.drawImage(qrCanvas, padding, padding, qrSize, qrSize);
-
-  // Name
   ctx.fillStyle = '#111827';
   ctx.font = 'bold 28px Cairo, Arial';
   ctx.textAlign = 'center';
   ctx.fillText(student.name, totalW / 2, qrSize + padding + 40);
-
-  // Code
   ctx.fillStyle = '#6b7280';
   ctx.font = '18px monospace';
   ctx.fillText(student.code, totalW / 2, qrSize + padding + 68);
@@ -4057,37 +4087,33 @@ async function downloadQRImage(code) {
   link.download = `QR_${student.name}_${student.code}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
-  showToast(`✅ تم تحميل QR صورة — ${student.name}`, 'success');
 }
 
+// ---- تحميل / فتح PDF ----
 async function downloadQRPDF(code) {
-  const el = document.getElementById('qr-share-menu');
-  if (el) el.remove();
   const student = state.students.find(s => s.code === code);
   if (!student) return;
-  showToast('⏳ جارٍ إنشاء PDF...', 'info');
 
   const qrCanvas = await _generateQRCanvas(code, 400);
   if (!qrCanvas) { showToast('تعذّر إنشاء QR', 'error'); return; }
 
   const imgData = qrCanvas.toDataURL('image/png');
-
   const win = window.open('', '_blank');
-  if (!win) { showToast('السماح بالنوافذ المنبثقة مطلوب', 'error'); return; }
+  if (!win) { showToast('فعّل النوافذ المنبثقة ثم حاول مرة أخرى', 'error'); return; }
   win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
     <meta charset="UTF-8">
     <title>QR — ${student.name}</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap" rel="stylesheet">
     <style>
-      * { margin:0; padding:0; box-sizing:border-box; }
-      body { font-family:'Cairo',Arial,sans-serif; background:#fff; display:flex; align-items:center; justify-content:center; min-height:100vh; }
-      .card { text-align:center; padding:48px 56px; border:2px solid #e5e7eb; border-radius:20px; display:inline-flex; flex-direction:column; align-items:center; gap:16px; }
-      .header { font-size:18px; color:#6b7280; font-weight:700; letter-spacing:1px; }
-      .qr-img { width:280px; height:280px; border:1px solid #f3f4f6; border-radius:8px; }
-      .name { font-size:26px; font-weight:900; color:#111827; }
-      .code { font-size:15px; color:#9ca3af; font-family:monospace; letter-spacing:2px; }
-      .footer { font-size:12px; color:#d1d5db; margin-top:8px; }
-      @media print { body { margin:0; } .no-print { display:none; } }
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Cairo',Arial,sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}
+      .card{text-align:center;padding:48px 56px;border:2px solid #e5e7eb;border-radius:20px;display:inline-flex;flex-direction:column;align-items:center;gap:16px}
+      .header{font-size:18px;color:#6b7280;font-weight:700}
+      .qr-img{width:280px;height:280px;border:1px solid #f3f4f6;border-radius:8px}
+      .name{font-size:26px;font-weight:900;color:#111827}
+      .code{font-size:15px;color:#9ca3af;font-family:monospace;letter-spacing:2px}
+      .center{font-size:13px;color:#d1d5db;margin-top:4px}
+      @media print{body{margin:0}}
     </style>
   </head><body>
     <div class="card">
@@ -4095,12 +4121,11 @@ async function downloadQRPDF(code) {
       <img class="qr-img" src="${imgData}" alt="QR Code">
       <div class="name">${student.name}</div>
       <div class="code">${student.code}</div>
-      ${student.center ? `<div class="footer">🏫 ${student.center}</div>` : ''}
+      ${student.center ? `<div class="center">🏫 ${student.center}</div>` : ''}
     </div>
-    <script>window.onload = () => { window.print(); }<\/script>
+    <script>window.onload=()=>window.print()<\/script>
   </body></html>`);
   win.document.close();
-  showToast(`✅ تم فتح PDF — ${student.name}`, 'success');
 }
 
 function printQR() {
