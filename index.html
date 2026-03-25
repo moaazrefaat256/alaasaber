@@ -4601,9 +4601,9 @@ function startDecoding() {
   let canvasReady = false;
 
   function tick() {
+    window._scannerTick = tick; // always update reference first
     if (!scanStream) return;
     if (scanPaused) { setTimeout(() => { if (scanStream && !scanPaused) requestAnimationFrame(tick); }, 300); return; }
-    window._scannerTick = tick; // expose globally for popup resume
 
     if (video.readyState >= 2 && video.videoWidth > 0) {
       // Set canvas size once
@@ -4674,7 +4674,7 @@ function handleScannedCode(code) {
   if (!student) {
     lastScannedCode = trimmed;
     lastScannedTime = now;
-    scanPaused = true; // أوقف السكانر لحد ما يتاكد
+    scanPaused = true;
     playBeep(false);
     if (statusEl) statusEl.innerHTML = `<span style="color:#a855f7">🔄 تعويض: ${trimmed}</span>`;
     const any = state.students.find(s => s.code === trimmed);
@@ -4682,30 +4682,29 @@ function handleScannedCode(code) {
     return;
   }
 
-  // ── Success ──────────────────────────────────────────
+  // ── Check for notes → show info popup before registering ────
   lastScannedCode = trimmed;
   lastScannedTime = now;
 
-  // Check if student has any note (pinned or session note)
   const sessionNoteForCheck = state.attendance[state.currentSession + '_notes']?.[trimmed] || '';
   const pinnedNoteForCheck  = student.pinnedNote || '';
   const hasNote = sessionNoteForCheck || pinnedNoteForCheck;
 
   if (hasNote) {
-    // Pause scanner and show student info popup
     scanPaused = true;
     playBeep(false);
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--warn)">📌 ${student.name}</span>`;
     showStudentInfoPopup(trimmed, student, sessionNoteForCheck, pinnedNoteForCheck);
     return;
   }
 
+  // ── Success ──────────────────────────────────────────
   markStudent(trimmed, 'present');
   playBeep(true);
-
   if (statusEl) statusEl.innerHTML =
     `<span style="font-size:16px;font-weight:900;color:var(--accent3)">✅ ${student.name}</span>`;
-  const vid = document.getElementById('qr-video');
-  if (vid) { vid.style.boxShadow = '0 0 0 5px var(--accent3)'; setTimeout(()=>{ vid.style.boxShadow=''; }, 600); }
+  const vid2 = document.getElementById('qr-video');
+  if (vid2) { vid2.style.boxShadow = '0 0 0 5px var(--accent3)'; setTimeout(()=>{ vid2.style.boxShadow=''; }, 600); }
   setTimeout(() => { if (statusEl) statusEl.textContent = 'جارٍ البحث عن QR Code...'; }, 1200);
 }
 
