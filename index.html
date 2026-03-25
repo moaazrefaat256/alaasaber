@@ -1080,7 +1080,10 @@
             <div class="card-title">كشف الحضور</div>
             <div class="card-subtitle" id="current-session-label">اختر محاضرة أولاً</div>
           </div>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="att-search" placeholder="🔍 بحث بالاسم أو الكود..." oninput="filterAttGrid()"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:'Cairo',sans-serif;font-size:13px;outline:none;width:190px"
+              onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
             <button class="btn btn-secondary btn-sm" onclick="markAllPresent()">✅ تحضير الكل</button>
             <button class="btn btn-secondary btn-sm" onclick="markAllAbsent()">❌ تغيب الكل</button>
             <button class="btn btn-primary btn-sm" onclick="saveAttendance()">💾 حفظ وإرسال الإشعارات</button>
@@ -2438,6 +2441,9 @@ function addSession() {
 }
 
 function selectSession(id) {
+  // Clear search on session change
+  const searchEl = document.getElementById('att-search');
+  if (searchEl) searchEl.value = '';
   state.currentSession = id;
   document.querySelectorAll('.session-pill').forEach(p => p.classList.remove('active'));
   const pill = document.querySelector(`[data-session="${id}"]`);
@@ -2535,6 +2541,10 @@ function makeAttRow(s, status) {
 
 function makeAttCard(s, status) { return makeAttRow(s, status); } // alias kept
 
+function filterAttGrid() {
+  renderAttGrid(); // re-render with search filter applied
+}
+
 function renderAttGrid() {
   const gridPresent = document.getElementById('att-grid-present');
   const gridAbsent  = document.getElementById('att-grid-absent');
@@ -2602,13 +2612,22 @@ function renderAttGrid() {
     </tr></thead><tbody>`;
   const tableFooter = `</tbody></table>`;
 
-  gridPresent.innerHTML = presentStudents.length
-    ? tableHeader + presentStudents.map(s => makeAttRow(s, 'present')).join('') + tableFooter
-    : '<div style="color:var(--text3);font-size:13px;padding:12px">لا يوجد</div>';
+  // Apply search filter if active
+  const attQ = (document.getElementById('att-search')?.value || '').trim().toLowerCase();
+  const filteredPresent = attQ
+    ? presentStudents.filter(s => s.name.toLowerCase().includes(attQ) || s.code.includes(attQ))
+    : presentStudents;
+  const filteredAbsent = attQ
+    ? absentStudents.filter(s => s.name.toLowerCase().includes(attQ) || s.code.includes(attQ))
+    : absentStudents;
 
-  gridAbsent.innerHTML = absentStudents.length
-    ? tableHeader + absentStudents.map(s => makeAttRow(s, 'absent')).join('') + tableFooter
-    : '<div style="color:var(--text3);font-size:13px;padding:12px">لا يوجد</div>';
+  gridPresent.innerHTML = filteredPresent.length
+    ? tableHeader + filteredPresent.map(s => makeAttRow(s, 'present')).join('') + tableFooter
+    : '<div style="color:var(--text3);font-size:13px;padding:12px">' + (attQ ? 'لا توجد نتائج' : 'لا يوجد') + '</div>';
+
+  gridAbsent.innerHTML = filteredAbsent.length
+    ? tableHeader + filteredAbsent.map(s => makeAttRow(s, 'absent')).join('') + tableFooter
+    : '<div style="color:var(--text3);font-size:13px;padding:12px">' + (attQ ? 'لا توجد نتائج' : 'لا يوجد') + '</div>';
 
   updateAttStats();
 }
@@ -4684,14 +4703,41 @@ function handleScannedCode(code) {
   // ── Success ──────────────────────────────────────────
   lastScannedCode = trimmed;
   lastScannedTime = now;
+  scanPaused = true; // pause scanner
+
   markStudent(trimmed, 'present');
   playBeep(true);
 
-  if (statusEl) statusEl.innerHTML =
-    `<span style="font-size:16px;font-weight:900;color:var(--accent3)">✅ ${student.name}</span>`;
+  // Gather all notes for this student
+  const pinnedNote = student.pinnedNote || '';
+  const sessionNote = (state.attendance[state.currentSession + '_notes'] || {})[trimmed] || '';
+  const absences = getStudentAbsences(trimmed);
+
+  // Build info display
+  let notesHTML = '';
+  if (pinnedNote) notesHTML += `<div style="font-size:12px;color:var(--warn);margin-top:4px">📌 ${pinnedNote}</div>`;
+  if (absences > 0) notesHTML += `<div style="font-size:12px;color:var(--danger);margin-top:2px">غياب: ${absences} مرة</div>`;
+
+  // Show student info + continue button
+  if (statusEl) statusEl.innerHTML = `
+    <div style="text-align:center">
+      <div style="font-size:18px;font-weight:900;color:var(--accent3)">✅ ${student.name}</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:2px">${student.code}${student.center ? ' • ' + student.center : ''}</div>
+      ${notesHTML}
+      <button onclick="resumeScanner()"
+        style="margin-top:10px;padding:8px 24px;background:var(--accent);color:#000;border:none;border-radius:10px;font-family:'Cairo',sans-serif;font-weight:700;font-size:13px;cursor:pointer">
+        ▶ متابعة
+      </button>
+    </div>`;
+
   const vid = document.getElementById('qr-video');
   if (vid) { vid.style.boxShadow = '0 0 0 5px var(--accent3)'; setTimeout(()=>{ vid.style.boxShadow=''; }, 600); }
-  setTimeout(() => { if (statusEl) statusEl.textContent = 'جارٍ البحث عن QR Code...'; }, 1200);
+}
+
+function resumeScanner() {
+  scanPaused = false;
+  const statusEl = document.getElementById('scan-status');
+  if (statusEl) statusEl.textContent = 'جارٍ البحث عن QR Code...';
 }
 
 function closeScanner() {
