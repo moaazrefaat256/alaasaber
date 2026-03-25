@@ -4720,9 +4720,12 @@ function handleScannedCode(code) {
   if (pinnedNote) notesHTML += `<div style="font-size:12px;color:var(--warn);margin-top:4px">📌 ${pinnedNote}</div>`;
   // Show last session note instead of absence count
   if (lastAbsenceNote !== null) {
-    // Student was absent last session
-    const noteText = lastAbsenceNote ? lastAbsenceNote : 'لا يوجد';
-    notesHTML += `<div style="font-size:12px;color:var(--danger);margin-top:4px;background:rgba(239,68,68,0.08);padding:3px 10px;border-radius:6px;border:1px solid rgba(239,68,68,0.2)">‼️ نوت الحصة اللي فاتت: <strong>${noteText}</strong></div>`;
+    // Student was absent last session — show note or just a warning
+    if (lastAbsenceNote) {
+      notesHTML += `<div style="font-size:12px;color:var(--danger);margin-top:4px;background:rgba(239,68,68,0.08);padding:3px 10px;border-radius:6px;border:1px solid rgba(239,68,68,0.2)">‼️ نوت الحصة اللي فاتت: <strong>${lastAbsenceNote}</strong></div>`;
+    } else {
+      notesHTML += `<div style="font-size:12px;color:var(--danger);margin-top:4px;background:rgba(239,68,68,0.08);padding:3px 10px;border-radius:6px;border:1px solid rgba(239,68,68,0.2)">‼️ غاب الحصة اللي فاتت — مفيش نوت</div>`;
+    }
   }
 
   // Show student info + continue button
@@ -4742,9 +4745,39 @@ function handleScannedCode(code) {
 }
 
 function resumeScanner() {
+  lastScannedCode = '';
+  lastScannedTime = 0;
   scanPaused = false;
   const statusEl = document.getElementById('scan-status');
   if (statusEl) statusEl.textContent = 'جارٍ البحث عن QR Code...';
+  // Restart the scan tick loop
+  if (scanStream) {
+    const video = document.getElementById('qr-video');
+    const canvas = document.getElementById('qr-canvas');
+    if (video && canvas) {
+      const ctx = canvas.getContext('2d');
+      function tick() {
+        if (!scanStream || scanPaused) return;
+        if (video.readyState >= 2 && video.videoWidth > 0) {
+          const scale = video.videoWidth > 400 ? 400 / video.videoWidth : 1;
+          canvas.width  = Math.floor(video.videoWidth  * scale);
+          canvas.height = Math.floor(video.videoHeight * scale);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          try {
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const result = jsQR(imgData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+            if (result && result.data.trim()) {
+              handleScannedCode(result.data.trim());
+              if (!scanPaused) setTimeout(() => { if (scanStream && !scanPaused) requestAnimationFrame(tick); }, SCAN_COOLDOWN);
+              return;
+            }
+          } catch(e) {}
+        }
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+  }
 }
 
 function closeScanner() {
