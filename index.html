@@ -4711,12 +4711,19 @@ function handleScannedCode(code) {
   // Gather all notes for this student
   const pinnedNote = student.pinnedNote || '';
   const sessionNote = (state.attendance[state.currentSession + '_notes'] || {})[trimmed] || '';
-  const absences = getStudentAbsences(trimmed);
+
+  // Get last session note (from the session before current one)
+  const lastAbsenceNote = getLastAbsenceNote(trimmed);
 
   // Build info display
   let notesHTML = '';
   if (pinnedNote) notesHTML += `<div style="font-size:12px;color:var(--warn);margin-top:4px">📌 ${pinnedNote}</div>`;
-  if (absences > 0) notesHTML += `<div style="font-size:12px;color:var(--danger);margin-top:2px">غياب: ${absences} مرة</div>`;
+  // Show last session note instead of absence count
+  if (lastAbsenceNote !== null) {
+    // Student was absent last session
+    const noteText = lastAbsenceNote ? lastAbsenceNote : 'لا يوجد';
+    notesHTML += `<div style="font-size:12px;color:var(--danger);margin-top:4px;background:rgba(239,68,68,0.08);padding:3px 10px;border-radius:6px;border:1px solid rgba(239,68,68,0.2)">‼️ نوت الحصة اللي فاتت: <strong>${noteText}</strong></div>`;
+  }
 
   // Show student info + continue button
   if (statusEl) statusEl.innerHTML = `
