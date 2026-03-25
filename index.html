@@ -4601,7 +4601,6 @@ function startDecoding() {
   let canvasReady = false;
 
   function tick() {
-    window._scannerTick = tick; // always update reference first
     if (!scanStream) return;
     if (scanPaused) { setTimeout(() => { if (scanStream && !scanPaused) requestAnimationFrame(tick); }, 300); return; }
 
@@ -4674,7 +4673,7 @@ function handleScannedCode(code) {
   if (!student) {
     lastScannedCode = trimmed;
     lastScannedTime = now;
-    scanPaused = true;
+    scanPaused = true; // أوقف السكانر لحد ما يتاكد
     playBeep(false);
     if (statusEl) statusEl.innerHTML = `<span style="color:#a855f7">🔄 تعويض: ${trimmed}</span>`;
     const any = state.students.find(s => s.code === trimmed);
@@ -4682,125 +4681,17 @@ function handleScannedCode(code) {
     return;
   }
 
-  // ── Check for notes → show info popup before registering ────
+  // ── Success ──────────────────────────────────────────
   lastScannedCode = trimmed;
   lastScannedTime = now;
-
-  const sessionNoteForCheck = state.attendance[state.currentSession + '_notes']?.[trimmed] || '';
-  const pinnedNoteForCheck  = student.pinnedNote || '';
-  const hasNote = sessionNoteForCheck || pinnedNoteForCheck;
-
-  if (hasNote) {
-    scanPaused = true;
-    playBeep(false);
-    if (statusEl) statusEl.innerHTML = `<span style="color:var(--warn)">📌 ${student.name}</span>`;
-    showStudentInfoPopup(trimmed, student, sessionNoteForCheck, pinnedNoteForCheck);
-    return;
-  }
-
-  // ── Success ──────────────────────────────────────────
   markStudent(trimmed, 'present');
   playBeep(true);
+
   if (statusEl) statusEl.innerHTML =
     `<span style="font-size:16px;font-weight:900;color:var(--accent3)">✅ ${student.name}</span>`;
-  const vid2 = document.getElementById('qr-video');
-  if (vid2) { vid2.style.boxShadow = '0 0 0 5px var(--accent3)'; setTimeout(()=>{ vid2.style.boxShadow=''; }, 600); }
-  setTimeout(() => { if (statusEl) statusEl.textContent = 'جارٍ البحث عن QR Code...'; }, 1200);
-}
-
-function showStudentInfoPopup(code, student, sessionNote, pinnedNote) {
-  const existing = document.getElementById('student-info-popup');
-  if (existing) existing.remove();
-
-  // Get absence info
-  const absences       = getStudentAbsences(code);
-  const attRate        = getStudentAttendanceRate(code);
-  const lastAbsNote    = getLastAbsenceNote(code);
-  const wasAbsentLast  = lastAbsNote !== null;
-
-  // Notes to display
-  const notes = [pinnedNote, sessionNote].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
-
-  // Absence rate color
-  const rateColor = attRate >= 80 ? 'var(--accent3)' : attRate >= 60 ? 'var(--warn)' : 'var(--danger)';
-
-  // Last session badge
-  const lastSessionBadge = wasAbsentLast
-    ? `<span style="background:rgba(239,68,68,0.15);color:var(--danger);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">❌ غايب الحصة اللي فاتت</span>`
-    : `<span style="background:rgba(16,185,129,0.15);color:var(--accent3);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">✅ حاضر الحصة اللي فاتت</span>`;
-
-  const el = document.createElement('div');
-  el.id = 'student-info-popup';
-  el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  el.innerHTML = `
-    <div style="background:var(--surface);border:2px solid var(--warn);border-radius:20px;padding:24px;font-family:Cairo,sans-serif;box-shadow:0 8px 40px rgba(0,0,0,0.8);width:340px;max-width:95vw;display:flex;flex-direction:column;gap:16px;position:relative">
-      
-      <!-- Header -->
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:46px;height:46px;background:linear-gradient(135deg,var(--warn),#d97706);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📌</div>
-        <div>
-          <div style="font-size:16px;font-weight:900;color:var(--text)">${student.name}</div>
-          <div style="font-size:11px;color:var(--text3);font-family:monospace;margin-top:2px">${code} ${student.center ? '• ' + student.center : ''}</div>
-        </div>
-      </div>
-
-      <!-- Notes Section -->
-      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px">
-        <div style="font-size:11px;font-weight:700;color:var(--warn);margin-bottom:2px">📝 ملاحظات</div>
-        ${notes.map(n => `<div style="font-size:13px;color:var(--text);background:rgba(245,158,11,0.1);padding:6px 10px;border-radius:8px;border-right:3px solid var(--warn)">${n}</div>`).join('')}
-      </div>
-
-      <!-- Stats Row -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div style="background:var(--surface2);border-radius:12px;padding:12px;text-align:center;border:1px solid var(--border)">
-          <div style="font-size:22px;font-weight:900;color:${rateColor};font-family:'Tajawal',sans-serif">${attRate}%</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">نسبة الحضور</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:12px;padding:12px;text-align:center;border:1px solid var(--border)">
-          <div style="font-size:22px;font-weight:900;color:var(--danger);font-family:'Tajawal',sans-serif">${absences}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">مرات الغياب</div>
-        </div>
-      </div>
-
-      <!-- Last session status -->
-      <div style="text-align:center">${lastSessionBadge}</div>
-
-      <!-- Action buttons -->
-      <div style="display:flex;gap:8px;margin-top:2px">
-        <button onclick="confirmStudentInfoPopup('${code}')"
-          style="flex:1;padding:12px;background:linear-gradient(135deg,var(--accent3),#059669);color:#fff;border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:14px;box-shadow:0 0 20px rgba(16,185,129,0.3)">
-          ✅ تسجيل حضور
-        </button>
-        <button onclick="dismissStudentInfoPopup()"
-          style="padding:12px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;cursor:pointer;font-size:14px">
-          تخطي
-        </button>
-      </div>
-    </div>`;
-
-  document.body.appendChild(el);
-}
-
-function confirmStudentInfoPopup(code) {
-  const el = document.getElementById('student-info-popup');
-  if (el) el.remove();
-  markStudent(code, 'present');
-  playBeep(true);
-  const student = state.students.find(s => s.code === code);
-  const statusEl = document.getElementById('scan-status');
-  if (statusEl) statusEl.innerHTML = `<span style="font-size:16px;font-weight:900;color:var(--accent3)">✅ ${student ? student.name : code}</span>`;
   const vid = document.getElementById('qr-video');
-  if (vid) { vid.style.boxShadow = '0 0 0 5px var(--accent3)'; setTimeout(() => { vid.style.boxShadow = ''; }, 600); }
+  if (vid) { vid.style.boxShadow = '0 0 0 5px var(--accent3)'; setTimeout(()=>{ vid.style.boxShadow=''; }, 600); }
   setTimeout(() => { if (statusEl) statusEl.textContent = 'جارٍ البحث عن QR Code...'; }, 1200);
-  scanPaused = false;
-  setTimeout(() => { if (scanStream && !scanPaused && window._scannerTick) requestAnimationFrame(window._scannerTick); }, 100);
-}
-
-function dismissStudentInfoPopup() {
-  const el = document.getElementById('student-info-popup');
-  if (el) el.remove();
-  scanPaused = false;
-  setTimeout(() => { if (scanStream && !scanPaused && window._scannerTick) requestAnimationFrame(window._scannerTick); }, 100);
 }
 
 function closeScanner() {
