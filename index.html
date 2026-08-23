@@ -182,6 +182,8 @@
   .page-title { font-size: 20px; font-weight: 900; }
   .page-subtitle { font-size: 12px; color: var(--text3); margin-top: 2px; }
   .topbar-actions { display: flex; gap: 10px; align-items: center; }
+  .hamburger-btn { display: none; }
+  .mobile-menu-overlay { display: none; }
   .btn {
     display: inline-flex;
     align-items: center;
@@ -570,33 +572,56 @@
 
   /* ===== MOBILE (600px) ===== */
   @media (max-width: 600px) {
-    /* Hide sidebar — use bottom nav */
-    .sidebar { display: none; }
-    .main { margin-right: 0; padding-bottom: 72px; }
+    /* Sidebar becomes a right-side slide-in drawer, toggled by the hamburger button */
+    .sidebar {
+      display: flex;
+      width: 250px;
+      max-width: 78vw;
+      transform: translateX(100%);
+      transition: transform 0.25s ease;
+      z-index: 300;
+      box-shadow: -8px 0 30px rgba(0,0,0,0.4);
+    }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-logo h1, .sidebar-logo p, .nav-item span:not(.icon), .sidebar-footer .teacher-info, .nav-section, .nav-badge { display: block; }
+    .nav-item { justify-content: flex-start; padding: 11px 16px; }
+    .nav-badge { display: inline-block; margin-right: auto; }
+    .main { margin-right: 0; padding-bottom: 0; }
 
-    /* Bottom navigation */
-    .bottom-nav {
+    /* Overlay behind the open drawer */
+    .mobile-menu-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 250;
+    }
+    .mobile-menu-overlay.open { display: block; }
+
+    /* Hamburger button in the topbar */
+    .hamburger-btn {
       display: flex !important;
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: 64px;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      z-index: 200;
-      justify-content: space-around;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+      width: 34px;
+      height: 34px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      padding: 0;
       align-items: center;
-      padding: 0 4px;
     }
-    .bottom-nav-item {
-      display: flex; flex-direction: column; align-items: center;
-      gap: 2px; padding: 6px 8px; border-radius: 12px;
-      cursor: pointer; flex: 1; transition: all 0.2s;
-      font-family: 'Cairo', sans-serif;
+    .hamburger-btn span {
+      display: block;
+      width: 16px;
+      height: 2px;
+      background: var(--text);
+      border-radius: 2px;
     }
-    .bottom-nav-item .bn-icon { font-size: 20px; }
-    .bottom-nav-item .bn-label { font-size: 9px; color: var(--text3); font-weight: 700; }
-    .bottom-nav-item.active .bn-icon { filter: drop-shadow(0 0 6px var(--accent)); }
-    .bottom-nav-item.active .bn-label { color: var(--accent); }
+
+    /* Bottom navigation removed on mobile in favor of the drawer */
+    .bottom-nav { display: none !important; }
 
     /* Topbar */
     .topbar { padding: 10px 14px; }
@@ -704,8 +729,6 @@
     .btn { font-size: 11px; padding: 7px 10px; }
     .btn-sm { font-size: 10px; padding: 4px 7px; }
     table { min-width: 400px; font-size: 11px; }
-    .bottom-nav-item .bn-label { font-size: 8px; }
-    .bottom-nav-item .bn-icon { font-size: 18px; }
     .session-pill { font-size: 10px; padding: 4px 10px; }
     .modal { padding: 14px; }
     .page-title { font-size: 14px; }
@@ -918,6 +941,9 @@
   </div>
 </nav>
 
+<!-- Overlay for the mobile drawer -->
+<div class="mobile-menu-overlay" id="mobile-menu-overlay" onclick="closeMobileMenu()"></div>
+
 <!-- MAIN -->
 <main class="main">
   <!-- TOPBAR -->
@@ -927,6 +953,9 @@
       <div class="page-subtitle" id="page-subtitle">نظرة عامة على السنتر</div>
     </div>
     <div class="topbar-actions" id="topbar-actions">
+      <button class="hamburger-btn" onclick="toggleMobileMenu()" aria-label="القائمة" title="القائمة">
+        <span></span><span></span><span></span>
+      </button>
       <div style="display:flex;align-items:center;gap:8px">
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:2px">
           <select id="grade-switcher" onchange="selectGrade(this.value)"
@@ -2181,6 +2210,7 @@ const pageConfig = {
 };
 
 function showPage(name) {
+  closeMobileMenu();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
@@ -2206,6 +2236,27 @@ function showPage(name) {
   if (name === 'notifications') renderNotifications();
   if (name === 'settings') renderSettings();
 }
+
+// ============================================================
+//  MOBILE SIDEBAR DRAWER (right-side slide-in menu, ≤600px)
+// ============================================================
+function toggleMobileMenu() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+  if (sidebar.classList.contains('open')) closeMobileMenu();
+  else openMobileMenu();
+}
+
+function openMobileMenu() {
+  document.querySelector('.sidebar')?.classList.add('open');
+  document.getElementById('mobile-menu-overlay')?.classList.add('open');
+}
+
+function closeMobileMenu() {
+  document.querySelector('.sidebar')?.classList.remove('open');
+  document.getElementById('mobile-menu-overlay')?.classList.remove('open');
+}
+
 
 // ============================================================
 //  STUDENTS
@@ -2640,6 +2691,14 @@ function filterStudents() {
 function renderStudents() {
   // Populate group filter — shown as "اسم السنتر - اسم المجموعة", selectable across all groups
   ensureCentersGroups();
+  // Keep the "add student" Center/Group selects in sync with the latest Firebase data
+  // (fixes stale/empty dropdowns when centers/groups arrive or change while this page is open)
+  populateCenterDropdowns();
+  const sGroupSel = document.getElementById('s-group-select');
+  if (sGroupSel) {
+    const sCenterId = document.getElementById('s-center-select')?.value || '';
+    populateGroupSelect('s-group-select', sCenterId, sGroupSel.value);
+  }
   const cf = document.getElementById('center-filter');
   if (cf) {
     const cur = cf.value;
@@ -6090,14 +6149,6 @@ async function sendQRAll() {
   showToast(`✅ تم: ${sent} نجح — ${failed} فشل`, 'success');
 }
 
-// Bottom nav active state
-function setBottomNav(page) {
-  document.querySelectorAll('.bottom-nav-item').forEach(el => el.classList.remove('active'));
-  const map = { dashboard:'bn-dashboard', students:'bn-students', attendance:'bn-attendance', quizzes:'bn-quizzes', reports:'bn-reports', notifications:'bn-more', settings:'bn-more' };
-  const el = document.getElementById(map[page] || 'bn-dashboard');
-  if (el) el.classList.add('active');
-}
-
 // Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('show'); });
@@ -6128,32 +6179,5 @@ setInterval(() => {
 }, 30000);
 </script>
 
-<!-- BOTTOM NAVIGATION (mobile only) -->
-<nav class="bottom-nav" style="display:none">
-  <div class="bottom-nav-item active" id="bn-dashboard" onclick="showPage('dashboard');setBottomNav('dashboard')">
-    <span class="bn-icon">📊</span>
-    <span class="bn-label">الرئيسية</span>
-  </div>
-  <div class="bottom-nav-item" id="bn-students" onclick="showPage('students');setBottomNav('students')">
-    <span class="bn-icon">👨‍🎓</span>
-    <span class="bn-label">الطلاب</span>
-  </div>
-  <div class="bottom-nav-item" id="bn-attendance" onclick="showPage('attendance');setBottomNav('attendance')">
-    <span class="bn-icon">✅</span>
-    <span class="bn-label">الحضور</span>
-  </div>
-  <div class="bottom-nav-item" id="bn-quizzes" onclick="showPage('quizzes');setBottomNav('quizzes')">
-    <span class="bn-icon">📝</span>
-    <span class="bn-label">الكويزات</span>
-  </div>
-  <div class="bottom-nav-item" id="bn-reports" onclick="showPage('reports');setBottomNav('reports')">
-    <span class="bn-icon">📈</span>
-    <span class="bn-label">التقارير</span>
-  </div>
-  <div class="bottom-nav-item" id="bn-more" onclick="showPage('notifications');setBottomNav('more')">
-    <span class="bn-icon">⋯</span>
-    <span class="bn-label">المزيد</span>
-  </div>
-</nav>
 </body>
 </html>
