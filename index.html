@@ -1873,6 +1873,10 @@ function initFirebase() {
     const gradeKey = currentGrade || 'general';
     dataRef = db.ref('center-data/' + gradeKey);
 
+    // Global (grade-independent) sync for the WhatsApp server URL — set once
+    // on any device, it propagates automatically to all connected devices.
+    initWaServerSync();
+
     // Connection monitor
     db.ref('.info/connected').on('value', snap => {
       showSyncStatus(snap.val() ? 'live' : 'offline');
@@ -4554,16 +4558,45 @@ function exportReportPDF() {
 // ============================================================
 //  WHATSAPP DIRECT SEND
 // ============================================================
-// Server URL — saved in localStorage
+// Server URL — synced globally via Firebase (app-config/waServerUrl) so that
+// setting it once on any device (e.g. the PC) propagates automatically to
+// every connected device/phone, instead of each device needing it entered
+// manually. localStorage is kept only as an offline fallback/cache.
 let WA_SERVER = localStorage.getItem('wa_server_url') || '';
+let waConfigRef = null;
+
+// Starts listening to the global (grade-independent) server-url config node.
+// Safe to call multiple times — it only attaches the listener once.
+function initWaServerSync() {
+  if (waConfigRef || typeof firebase === 'undefined' || !firebase.apps.length) return;
+  try {
+    waConfigRef = firebase.database().ref('app-config/waServerUrl');
+    waConfigRef.on('value', snap => {
+      const url = snap.val();
+      if (url && url !== WA_SERVER) {
+        WA_SERVER = url;
+        try { localStorage.setItem('wa_server_url', WA_SERVER); } catch(e) {}
+      } else if (!url && !WA_SERVER) {
+        // Nothing set yet anywhere — leave WA_SERVER as-is (local fallback, if any)
+      }
+    });
+  } catch(e) { console.error('WA server sync error:', e); }
+}
 
 function promptServerUrl() {
   const current = WA_SERVER || '';
   const url = prompt('🌐 أدخل رابط السيرفر (Cloudflare URL):', current);
   if (url && url.trim()) {
     WA_SERVER = url.trim().replace(/\/$/, '');
-    localStorage.setItem('wa_server_url', WA_SERVER);
-    showToast('✅ تم حفظ رابط السيرفر', 'success');
+    try { localStorage.setItem('wa_server_url', WA_SERVER); } catch(e) {}
+    // Push to Firebase so every other connected device picks it up automatically
+    if (waConfigRef) {
+      waConfigRef.set(WA_SERVER)
+        .then(() => showToast('✅ تم حفظ الرابط ومزامنته مع كل الأجهزة', 'success'))
+        .catch(() => showToast('⚠️ تم الحفظ محليًا فقط — تعذّرت المزامنة', 'error'));
+    } else {
+      showToast('✅ تم حفظ رابط السيرفر', 'success');
+    }
   }
 }
 
